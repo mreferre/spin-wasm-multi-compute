@@ -109,7 +109,7 @@ Outputs:
 WebAssemblyDemoBackendSandbox.LoadBalancerEndpoint = WebAs-LoadB-1FEU1R1742VAK-270357997.eu-west-1.elb.amazonaws.com
 ```
 
-### Testing the API
+### Test the API
 Below are examples that show the available resources and how to use them.
 
 ```bash
@@ -121,15 +121,17 @@ api_endpoint=$(aws cloudformation describe-stacks \
 curl "${api_endpoint}"
 ```
 
+### Visualize the components in the stacks
+
+In addition to the hand-made diagram at the top, the [cdk-dia](https://github.com/pistazie/cdk-dia) tool is able to autogenerate an architectural diagram based on the IaC being authored:
+
+![architecture-cdk-dia](./images/architecture_cdk-dia.png)
+
 ### Delete all stacks
 **Do not forget to delete the stacks to avoid unexpected charges**
 ```bash
 npx cdk destroy WebAssemblyDemoBackendSandbox
 ```
-
-In addition to the hand-made diagram at the top, the [cdk-dia](https://github.com/pistazie/cdk-dia) tool is able to autogenerate an architectural diagram based on the IaC being authored:
-
-![architecture-cdk-dia](./images/architecture_cdk-dia.png)
 
 ### Credits and license
 
