@@ -1,0 +1,34 @@
+# AWS CDK
+cdk.out/
+
+# Byte-compiled / optimized / DLL
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# CDK-Dia
+/diagram.*
+
+# Coverage.py
+.coverage
+coverage.xml
+htmlcov/
+
+# Environment
+.venv/
+node_modules/
+
+# macOS
+.DS_Store
+
+# mypy
+.mypy_cache/
+
+# PyCharm
+.idea/
+
+# pyenv
+.python-version

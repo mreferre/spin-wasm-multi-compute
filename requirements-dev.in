@@ -1,0 +1,10 @@
+-c requirements.txt
+bandit
+black
+flake8
+isort
+mypy
+pylint
+radon
+safety
+xenon
