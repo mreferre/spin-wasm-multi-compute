@@ -29,7 +29,12 @@ class Datastore(Construct):
             removal_policy=cdk.RemovalPolicy.DESTROY,
             vpc=vpc,
         )
-        self.efs_access_point = self.efs_file_system.add_access_point("AccessPoint")
+        self.efs_access_point = self.efs_file_system.add_access_point(
+            "AccessPoint",
+            create_acl=efs.Acl(owner_uid="1000", owner_gid="1000", permissions="777"),
+            path="/app",
+            posix_user=efs.PosixUser(uid="1000", gid="1000"),
+        )
 
     def allow_connections_from(self, *others: ec2.IConnectable) -> None:
         for other in others:

@@ -15,7 +15,6 @@
 
 import pathlib
 
-import aws_cdk as cdk
 import aws_cdk.aws_ec2 as ec2
 import aws_cdk.aws_ecs as ecs
 import aws_cdk.aws_efs as efs
@@ -38,12 +37,13 @@ class Compute(Construct):
     ):
         super().__init__(scope, id_)
 
-        efs_mount_path = "/mnt/wasm"
+        efs_mount_path = "/mnt/app"
         efs_mount_path_env_var_name = "EFS_MOUNT_PATH"
 
         server = Server(
             self,
             "Server",
+            efs_access_point_id=efs_access_point.access_point_id,
             efs_file_system_id=efs_file_system_id,
             efs_mount_path=efs_mount_path,
             vpc=vpc,
@@ -53,6 +53,7 @@ class Compute(Construct):
         container = Container(
             self,
             "Container",
+            efs_access_point_id=efs_access_point.access_point_id,
             efs_file_system_id=efs_file_system_id,
             efs_mount_path=efs_mount_path,
             efs_mount_path_env_var_name=efs_mount_path_env_var_name,
@@ -79,6 +80,7 @@ class Server(Construct):
         scope: Construct,
         id_: str,
         *,
+        efs_access_point_id: str,
         efs_file_system_id: str,
         efs_mount_path: str,
         vpc: ec2.IVpc,
@@ -91,13 +93,13 @@ class Server(Construct):
             instance_type=ec2.InstanceType("t3.micro"),
             machine_image=ec2.MachineImage.from_ssm_parameter(
                 # pylint: disable=line-too-long
-                "/aws/service/canonical/ubuntu/server/20.04/stable/current/amd64/hvm/ebs-gp2/ami-id"  # noqa
+                "/aws/service/canonical/ubuntu/server/20.04/stable/current/amd64/hvm/ebs-gp2/ami-id"
             ),
             vpc=vpc,
             vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
         )
         self._add_permissions()
-        self._add_user_data(efs_file_system_id, efs_mount_path)
+        self._add_user_data(efs_access_point_id, efs_file_system_id, efs_mount_path)
 
     def _add_permissions(self) -> None:
         # Enable AWS Systems Manager Session Manager
@@ -106,11 +108,19 @@ class Server(Construct):
                 "AmazonSSMManagedInstanceCore",
             )
         )
+        # Enable access to Amazon EFS
+        self.ec2_instance.role.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name(
+                "AmazonElasticFileSystemClientReadWriteAccess",
+            )
+        )
 
-    def _add_user_data(self, efs_file_system_id: str, efs_mount_path: str) -> None:
+    def _add_user_data(
+        self, efs_access_point_id: str, efs_file_system_id: str, efs_mount_path: str
+    ) -> None:
         self._apt_get_update_and_upgrade()
         self._install_efs_utils()
-        self._mount_efs(efs_file_system_id, efs_mount_path)
+        self._mount_efs(efs_access_point_id, efs_file_system_id, efs_mount_path)
         self._install_rust_and_wasm()
         self._install_spin()
         self._seed_data_to_efs(efs_mount_path)
@@ -132,12 +142,13 @@ class Server(Construct):
             "cd -",
         )
 
-    def _mount_efs(self, efs_file_system_id: str, efs_mount_path: str) -> None:
-        # pylint: disable=line-too-long
-        efs_file_system_dns_name = f"{efs_file_system_id}.efs.{cdk.Stack.of(self).region}.amazonaws.com"  # noqa
+    def _mount_efs(
+        self, efs_access_point_id: str, efs_file_system_id: str, efs_mount_path: str
+    ) -> None:
         self.ec2_instance.user_data.add_commands(
             f"mkdir -p {efs_mount_path}",
-            f"mount -t efs -o tls {efs_file_system_dns_name}:/ {efs_mount_path}",
+            # pylint: disable=line-too-long
+            f"mount -t efs -o tls,accesspoint={efs_access_point_id} {efs_file_system_id}:/ {efs_mount_path}",
         )
 
     def _install_rust_and_wasm(self) -> None:
@@ -151,7 +162,7 @@ class Server(Construct):
     def _install_spin(self) -> None:
         self.ec2_instance.user_data.add_commands(
             # pylint: disable=line-too-long
-            "curl -L -O https://github.com/fermyon/spin/releases/download/v0.6.0/spin-v0.6.0-linux-amd64.tar.gz",  # noqa
+            "curl -L -O https://github.com/fermyon/spin/releases/download/v0.6.0/spin-v0.6.0-linux-amd64.tar.gz",
             "tar -zxvf spin-v0.6.0-linux-amd64.tar.gz",
             "mv spin /usr/local/bin/spin",
         )
@@ -162,9 +173,9 @@ class Server(Construct):
             "echo Creating and building a small application...",
             "spin templates install --git https://github.com/fermyon/spin",
             # pylint: disable=line-too-long
-            "[[ -d spin-hello-world ]] || spin new http-rust spin-hello-world --value project-description='Rust http service' --value http-base=/ --value http-path=/",  # noqa
+            "[[ -d spin-hello-world ]] || spin new http-rust spin-hello-world --value project-description='Rust http service' --value http-base=/ --value http-path=/",
             # pylint: disable=line-too-long
-            "/root/.cargo/bin/cargo build --manifest-path ./spin-hello-world/Cargo.toml --target wasm32-wasi --release",  # noqa
+            "/root/.cargo/bin/cargo build --manifest-path ./spin-hello-world/Cargo.toml --target wasm32-wasi --release",
             "cd -",
         )
 
@@ -172,7 +183,7 @@ class Server(Construct):
         self.ec2_instance.user_data.add_commands(
             "echo Launching Spin...",
             # pylint: disable=line-too-long
-            f"spin up --listen 0.0.0.0:{constants.SPIN_PORT} --disable-cache --file {efs_mount_path}/spin-hello-world/spin.toml",  # noqa
+            f"spin up --listen 0.0.0.0:{constants.SPIN_PORT} --disable-cache --file {efs_mount_path}/spin-hello-world/spin.toml",
         )
 
 
@@ -182,6 +193,7 @@ class Container(Construct):
         scope: Construct,
         id_: str,
         *,
+        efs_access_point_id: str,
         efs_file_system_id: str,
         efs_mount_path: str,
         efs_mount_path_env_var_name: str,
@@ -190,6 +202,7 @@ class Container(Construct):
         super().__init__(scope, id_)
 
         ecs_fargate_task_definition = self._create_ecs_fargate_task_definition(
+            efs_access_point_id,
             efs_file_system_id,
             efs_mount_path,
             efs_mount_path_env_var_name,
@@ -205,6 +218,7 @@ class Container(Construct):
 
     def _create_ecs_fargate_task_definition(
         self,
+        efs_access_point_id: str,
         efs_file_system_id: str,
         efs_mount_path: str,
         efs_mount_path_env_var_name: str,
@@ -215,9 +229,15 @@ class Container(Construct):
             cpu=256,
             memory_limit_mib=512,
         )
+        ecs_fargate_task_definition.task_role.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name(
+                "AmazonElasticFileSystemClientReadWriteAccess",
+            )
+        )
         efs_volume_name = "efs"
         Container._add_volume(
             ecs_fargate_task_definition,
+            efs_access_point_id,
             efs_file_system_id,
             efs_volume_name,
         )
@@ -232,11 +252,17 @@ class Container(Construct):
     @staticmethod
     def _add_volume(
         task_definition: ecs.FargateTaskDefinition,
+        efs_access_point_id: str,
         efs_file_system_id: str,
         efs_volume_name: str,
     ) -> None:
         efs_volume_configuration = ecs.EfsVolumeConfiguration(
+            authorization_config=ecs.AuthorizationConfig(
+                access_point_id=efs_access_point_id,
+                iam="ENABLED",
+            ),
             file_system_id=efs_file_system_id,
+            transit_encryption="ENABLED",
         )
         task_definition.add_volume(
             name=efs_volume_name, efs_volume_configuration=efs_volume_configuration
@@ -289,7 +315,7 @@ class Function(Construct):
                 efs_mount_path_env_var_name: efs_mount_path,
                 # Set HOME to /tmp because the spin --log-dir directive seems to
                 # have been removed (https://github.com/fermyon/spin/issues/815)
-                "HOME": "/tmp",
+                "HOME": "/tmp",  # nosec B108
             },
             filesystem=lambda_.FileSystem.from_efs_access_point(
                 efs_access_point,
