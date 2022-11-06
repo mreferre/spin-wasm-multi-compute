@@ -313,9 +313,6 @@ class Function(Construct):
             ),
             environment={
                 efs_mount_path_env_var_name: efs_mount_path,
-                # Set HOME to /tmp because the spin --log-dir directive seems to
-                # have been removed (https://github.com/fermyon/spin/issues/815)
-                "HOME": "/tmp",  # nosec B108
             },
             filesystem=lambda_.FileSystem.from_efs_access_point(
                 efs_access_point,
