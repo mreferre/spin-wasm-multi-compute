@@ -13,19 +13,19 @@ The diagram below depicts, at the high level, the architecture that this project
 ![architecture](./images/architecture.png)
 
 The EC2 instance has a `user data` script that does the following: 
-- it mounts an EFS volume (under `/mnt/wasm`) 
+- it mounts an EFS Access Point (under `/mnt/app`) 
 - it installs the Rust dev toolchain
 - it installs `spin`
-- it creates a new spin sample application (written in Rust) and build a wasm artifact (placed on the EFS volume)
+- it creates a new spin sample application (written in Rust) and build a wasm artifact (placed on the EFS Access Point)
 - it launches the spin process to serve the sample application above
 
-You can check the [user data script in the Infrastructure as Code](./backend/compute/infrastructure.py). If you want to change the application you can use this EC2 instance as your development environment. Just make sure you do everything in the `/mnt/wasm` folder because that is how the other primitives are going to leverage the same artifacts.
+You can check the [user data script in the Infrastructure as Code](./backend/compute/infrastructure.py). If you want to change the application you can use this EC2 instance as your development environment. Just make sure you do everything in the `/mnt/app` folder because that is how the other primitives are going to leverage the same artifacts.
 
 The [Dockerfile](./backend/compute/runtime/Dockerfile) that backs both the ECS/Fargate task and the Lambda function does similar things:
 - it installs `spin`
 - it launches the spin process to serve the sample application
 
-Note that the Dockerfile embeds the [Lambda Adapter binary](https://github.com/awslabs/aws-lambda-web-adapter) to allow the container image to be re-used as-is in Lambda. Also note that both ECS/Fargate and the Lambda function will mount the same EFS volume (via the IaC) which will allow them to serve the same WebAssembly application created and built on the EC2 instance above.
+Note that the Dockerfile embeds the [Lambda Adapter binary](https://github.com/awslabs/aws-lambda-web-adapter) to allow the container image to be re-used as-is in Lambda. Also note that both ECS/Fargate and the Lambda function will mount the same EFS Access Point (via the IaC) which will allow them to serve the same WebAssembly application created and built on the EC2 instance above.
 
 ## Output
 
